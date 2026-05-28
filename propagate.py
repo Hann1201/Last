@@ -1,139 +1,73 @@
-# propagate.py
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
-c = 3e8  # 光速
+# 增加 font_prop 参数
+def run_propagate_simulation(amplitude, interface_pos, lambda0, er2, font_prop):
+    c = 3e8
+    f = c / lambda0
+    omega = 2 * np.pi * f
 
+    k0 = 2 * np.pi / lambda0
+    v2 = c / np.sqrt(er2)
+    lambda2 = lambda0 / np.sqrt(er2)
+    k2 = 2 * np.pi / lambda2
 
-def calculate_propagate(wavelength, amplitude, er, interface_pos):
-    """计算电磁波传播参数"""
-    k0 = 2 * np.pi / wavelength
-    k = k0 * np.sqrt(er)
+    eta0 = 377
+    eta2 = 377 / np.sqrt(er2)
+    Gamma = (eta2 - eta0) / (eta2 + eta0)
+    tau = 2 * eta2 / (eta2 + eta0)
 
-    # 坐标
-    x = np.linspace(0, 10, 600)
-    y = np.linspace(-1, 1, 30)
-    X, Y = np.meshgrid(x, y)
+    x_total = np.linspace(0, 10, 1000)
+    t = 0
 
-    # 电场和磁场
-    eta0 = 377  # 真空阻抗
-    eta = eta0 / np.sqrt(er)
-    E = amplitude * np.sin(2 * np.pi * X / wavelength)
-    H = amplitude / eta * np.cos(2 * np.pi * X / wavelength)
+    E_left = np.zeros_like(x_total)
+    H_left = np.zeros_like(x_total)
 
-    # 在介质中修改波长
-    lam_med = wavelength / np.sqrt(er)
-    mask = X >= interface_pos
-    E[mask] = amplitude * np.sin(2 * np.pi * X[mask] / lam_med)
-    H[mask] = amplitude / eta * np.cos(2 * np.pi * X[mask] / lam_med)
+    E_right = np.zeros_like(x_total)
+    H_right = np.zeros_like(x_total)
 
-    # 传播参数
-    beta = k
-    vp = c / np.sqrt(er)
-    lam_med_value = wavelength / np.sqrt(er)
+    for i, x in enumerate(x_total):
+        if x <= interface_pos:
+            phase_i = -k0 * x + omega * t
+            phase_r = k0 * x + omega * t
+            E_i = amplitude * np.cos(phase_i)
+            E_r = amplitude * Gamma * np.cos(phase_r)
+            E_left[i] = E_i + E_r
 
-    return X, Y, E, H, x, beta, vp, eta, lam_med_value, k0
+            H_i = (amplitude / eta0) * np.cos(phase_i)
+            H_r = (-amplitude * Gamma / eta0) * np.cos(phase_r)
+            H_left[i] = H_i + H_r
+        else:
+            phase_t = -k2 * x + omega * t
+            E_t = amplitude * tau * np.cos(phase_t)
+            E_right[i] = E_t
+            H_right[i] = (amplitude * tau / eta2) * np.cos(phase_t)
 
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-def run_propagate_simulation(wavelength, amplitude, er, interface_pos, col_main, col_info):
-    """
-    运行传播仿真主函数（供主文件调用）
+    ax.plot(x_total, E_left, label='电场 E(z)', color='blue')
+    ax.plot(x_total, H_left, label='磁场 H(z)', color='red')
+    ax.plot(x_total[x_total > interface_pos], E_right[x_total > interface_pos], color='blue')
+    ax.plot(x_total[x_total > interface_pos], H_right[x_total > interface_pos], color='red')
 
-    参数:
-        wavelength: 真空波长
-        amplitude: 振幅
-        er: 相对介电常数
-        interface_pos: 分界面位置
-        col_main: Streamlit 主显示列
-        col_info: Streamlit 信息显示列
-    """
-    try:
-        # 计算
-        X, Y, E, H, x, beta, vp, eta, lam_med, k0 = calculate_propagate(
-            wavelength, amplitude, er, interface_pos
-        )
+    ax.axvline(x=interface_pos, color='green', linestyle='--', label='介质分界面')
 
-        # 创建双图
-        fig = create_dual_plots(X, Y, E, H, x, interface_pos, er, wavelength)
+    # 所有中文都加 fontproperties=font_prop
+    ax.set_xlabel('位置 z (m)', fontproperties=font_prop)
+    ax.set_ylabel('场强度', fontproperties=font_prop)
+    ax.set_title(f'电磁波传播 (εᵣ = {er2})', fontproperties=font_prop)
+    
+    # 图例也加字体
+    ax.legend(prop=font_prop)
+    ax.grid(True)
 
-        # 在Streamlit中显示
-        with col_main:
-            st.pyplot(fig)
-            plt.close(fig)
-
-        # 显示参数信息
-        with col_info:
-            st.success("✅ 仿真完成！")
-            st.info(f"""
-            📊 **传播参数**
-
-            **波参数**
-            • 相位常数 β: {beta:.4f} rad/m
-            • 介质波长 λ: {lam_med:.4f} m
-            • 真空波数 k₀: {k0:.4f} m⁻¹
-
-            **传播特性**
-            • 相速度 vp: {vp:.2e} m/s
-            • 波阻抗 η: {eta:.2f} Ω
-            • 折射率 n: {np.sqrt(er):.3f}
-
-            **介质参数**
-            • 相对介电常数 εᵣ: {er}
-            • 真空波长 λ₀: {wavelength:.4f} m
-            """)
-
-        return True
-
-    except Exception as e:
-        with col_main:
-            st.error(f"❌ 仿真失败: {str(e)}")
-        return False
-
-
-def create_dual_plots(X, Y, E, H, x, interface_pos, er, wavelength):
-    """创建双图：左侧3D图，右侧波形图"""
-
-    # 获取第一行的电场值用于2D图
-    E_1d = E[0, :]
-    H_1d = H[0, :]
-
-    fig = plt.figure(figsize=(16, 7))
-
-
-    # ========== 右图：2D波形图（电场+磁场）==========
-    ax2 = fig.add_subplot(1, 2, 2)
-
-    # 绘制电场和磁场
-    ax2.plot(x, E_1d, 'b-', linewidth=2.5, label='电场强度 E(z)', alpha=0.8)
-    ax2.plot(x, H_1d, 'r-', linewidth=2, label='磁场强度 H(z)', alpha=0.8)
-
-    # 绘制分界线
-    ax2.axvline(interface_pos, color='k', linestyle='--', linewidth=2, label='介质分界面')
-
-    # 添加区域标注
-    ylim = ax2.get_ylim()
-    y_pos = ylim[1] * 0.9
-
-    ax2.text(interface_pos / 2, y_pos, '区域1 (真空)',
-             ha='center', fontsize=11, bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
-    ax2.text(interface_pos + (x.max() - interface_pos) / 2, y_pos,
-             f'区域2 (介质 εr={er})', ha='center', fontsize=11,
-             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
-
-    ax2.set_xlabel('传播方向 z (m)', fontsize=12)
-    ax2.set_ylabel('场强度 (V/m, A/m)', fontsize=12)
-    ax2.set_title(f'电磁波传播波形 (εr = {er})', fontsize=12)
-    ax2.legend(loc='upper right', fontsize=10)
-    ax2.grid(True, alpha=0.3, linestyle='--')
-
-    # 设置y轴范围
-    max_val = max(abs(E_1d.max()), abs(E_1d.min()), abs(H_1d.max()), abs(H_1d.min()))
-    ax2.set_ylim(-max_val * 1.2, max_val * 1.2)
-
-    plt.tight_layout()
-    return fig
-
-
-# 需要导入streamlit（因为run_propagate_simulation中使用了st）
-import streamlit as st
+    info = {
+        '频率 f (Hz)': f,
+        '真空波长 λ₀ (m)': lambda0,
+        '介质波长 λ (m)': lambda2,
+        '相速度 v (m/s)': v2,
+        '波阻抗 η (Ω)': eta2,
+        '反射系数 Γ': Gamma,
+        '透射系数 τ': tau
+    }
+    return fig, info
