@@ -1,0 +1,14 @@
+# 核心框架
+streamlit>=1.30.0
+
+# 数值计算
+numpy>=1.24
+scipy>=1.10
+
+# 绘图/可视化
+matplotlib>=3.7
+plotly>=5.15
+
+# 数据与格式（Streamlit 常用）
+pandas>=2.0
+pyarrow>=12.0
