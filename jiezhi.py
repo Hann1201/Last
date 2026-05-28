@@ -1,138 +1,72 @@
-# jiezhi1_jiezhi2.py
-# 介质1到介质2的电磁波传播仿真模块
-
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import streamlit as st
 
-# 物理常量
-c = 3e8
+# 增加 font_prop 参数
+def run_media_propagation_simulation(amplitude, interface_pos, lambda1, er1, ur1, er2, ur2, font_prop):
+    c = 3e8
+    f = c / lambda1
+    omega = 2 * np.pi * f
 
-
-def calculate_media_propagation(frequency, wavelength, amplitude, er1, ur1, er2, ur2, interface_pos):
-    """
-    计算电磁波从介质1到介质2的传播参数
-    """
-    # 计算频率和波长
-    if frequency is not None and frequency > 0:
-        f = frequency
-        lam0 = c / f
-    else:
-        lam0 = wavelength
-        f = c / lam0
-
-    # 介质1参数
     v1 = c / np.sqrt(er1 * ur1)
-    lam1 = v1 / f
-    k1 = 2 * np.pi / lam1
-    eta1 = 377 * np.sqrt(ur1 / er1)
-
-    # 介质2参数
     v2 = c / np.sqrt(er2 * ur2)
-    lam2 = v2 / f
-    k2 = 2 * np.pi / lam2
+    lambda2 = lambda1 * (v2 / v1)
+
+    k1 = 2 * np.pi / lambda1
+    k2 = 2 * np.pi / lambda2
+
+    eta1 = 377 * np.sqrt(ur1 / er1)
     eta2 = 377 * np.sqrt(ur2 / er2)
+    Gamma = (eta2 - eta1) / (eta2 + eta1)
+    tau = 2 * eta2 / (eta2 + eta1)
 
-    # 坐标
-    x = np.linspace(0, 10, 600)
-    y = np.linspace(-1, 1, 30)
-    X, Y = np.meshgrid(x, y)
+    x_total = np.linspace(0, 10, 1000)
+    t = 0
 
-    # 计算电场和磁场
-    E = np.zeros_like(X)
-    H = np.zeros_like(X)
+    E_left = np.zeros_like(x_total)
+    H_left = np.zeros_like(x_total)
+    E_right = np.zeros_like(x_total)
+    H_right = np.zeros_like(x_total)
 
-    mask1 = X < interface_pos
-    mask2 = X >= interface_pos
+    for i, x in enumerate(x_total):
+        if x <= interface_pos:
+            phase_i = -k1 * x + omega * t
+            phase_r = k1 * x + omega * t
+            E_i = amplitude * np.cos(phase_i)
+            E_r = amplitude * Gamma * np.cos(phase_r)
+            E_left[i] = E_i + E_r
 
-    # 介质1中的波
-    E[mask1] = amplitude * np.sin(k1 * X[mask1])
-    H[mask1] = amplitude / eta1 * np.cos(k1 * X[mask1])
+            H_i = (amplitude / eta1) * np.cos(phase_i)
+            H_r = (-amplitude * Gamma / eta1) * np.cos(phase_r)
+            H_left[i] = H_i + H_r
+        else:
+            phase_t = -k2 * x + omega * t
+            E_t = amplitude * tau * np.cos(phase_t)
+            E_right[i] = E_t
+            H_right[i] = (amplitude * tau / eta2) * np.cos(phase_t)
 
-    # 介质2中的波（相位连续）
-    phase_at_boundary = k1 * interface_pos
-    E[mask2] = amplitude * np.sin(k2 * (X[mask2] - interface_pos) + phase_at_boundary)
-    H[mask2] = amplitude / eta2 * np.cos(k2 * (X[mask2] - interface_pos) + phase_at_boundary)
+    fig, ax = plt.subplots(figsize=(10, 5))
 
-    return X, Y, E, H, x, lam0, lam1, lam2, v1, v2, eta1, eta2, k1, k2, f
+    ax.plot(x_total, E_left, label='电场 E(z)', color='blue')
+    ax.plot(x_total, H_left, label='磁场 H(z)', color='red')
+    ax.plot(x_total[x_total > interface_pos], E_right[x_total > interface_pos], color='blue')
+    ax.plot(x_total[x_total > interface_pos], H_right[x_total > interface_pos], color='red')
 
+    ax.axvline(x=interface_pos, color='green', linestyle='--', label='介质分界面')
 
-def run_media_propagation_simulation(frequency, wavelength, amplitude, er1, ur1, er2, ur2,
-                                     interface_pos, col_main, col_info):
-    """
-    运行介质间传播仿真主函数
-    """
-    try:
-        # 参数验证
-        if frequency is None and wavelength is None:
-            raise ValueError("请设置频率或波长")
+    # 所有中文都加 fontproperties=font_prop
+    ax.set_xlabel('位置 z (m)', fontproperties=font_prop)
+    ax.set_ylabel('场强度', fontproperties=font_prop)
+    ax.set_title(f'介质间电磁波传播 (εᵣ₁={er1}, μᵣ₁={ur1} → εᵣ₂={er2}, μᵣ₂={ur2})', fontproperties=font_prop)
+    
+    # 图例字体
+    ax.legend(prop=font_prop)
+    ax.grid(True)
 
-        # 计算
-        X, Y, E, H, x, lam0, lam1, lam2, v1, v2, eta1, eta2, k1, k2, f = calculate_media_propagation(
-            frequency, wavelength, amplitude, er1, ur1, er2, ur2, interface_pos
-        )
-
-        # 创建图形
-        fig = plt.figure(figsize=(16, 7))
-
-        # 获取第一行数据
-        E_1d = E[0, :]
-        H_1d = H[0, :]
-
-        # ========== 左图：3D 曲线图 ==========
-        ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-
-        ax1.plot(x, np.zeros_like(x), E_1d, lw=2.5, c='#1f77b4', label='电场E')
-        ax1.plot(x, H_1d, np.zeros_like(x), lw=2.5, c='#ff6b35', label='磁场H')
-        ax1.plot([interface_pos, interface_pos], [-2, 2], [-2, 2], 'r--', lw=2, label='介质分界面')
-
-        ax1.set_title(f'电磁波跨介质传播 f={f / 1e6:.1f}MHz', fontsize=12)
-        ax1.set_xlabel('传播方向x', fontsize=10)
-        ax1.set_ylabel('磁场H', fontsize=10)
-        ax1.set_zlabel('电场E', fontsize=10)
-        ax1.legend(loc='upper right')
-        ax1.view_init(elev=25, azim=-60)
-
-
-        plt.tight_layout()
-
-        # 显示图形
-        with col_main:
-            st.pyplot(fig)
-            plt.close(fig)
-
-        # 计算反射系数
-        gamma = (eta2 - eta1) / (eta2 + eta1)
-        tau = 2 * eta2 / (eta2 + eta1)
-
-        # 显示参数
-        with col_info:
-            st.success("✅ 介质传播仿真完成！")
-            st.info(f"""
-            📊 **传播参数**
-
-            **介质1**
-            • 波速: {v1:.2e} m/s
-            • 波长: {lam1:.4f} m
-            • 波阻抗: {eta1:.2f} Ω
-            • εr={er1:.2f}, μr={ur1:.2f}
-
-            **介质2**
-            • 波速: {v2:.2e} m/s
-            • 波长: {lam2:.4f} m
-            • 波阻抗: {eta2:.2f} Ω
-            • εr={er2:.2f}, μr={ur2:.2f}
-
-            **界面特性**
-            • 反射系数 Γ: {gamma:.4f}
-            • 透射系数 τ: {tau:.4f}
-            • 频率: {f / 1e6:.2f} MHz
-            """)
-
-        return True
-
-    except Exception as e:
-        with col_main:
-            st.error(f"❌ 介质传播仿真失败: {str(e)}")
-        return False
+    info = {
+        '频率 f (Hz)': f,
+        '介质1波长 λ₁ (m)': lambda1,
+        '介质2波长 λ₂ (m)': lambda2,
+        '反射系数 Γ': Gamma,
+        '透射系数 τ': tau
+    }
+    return fig, info
