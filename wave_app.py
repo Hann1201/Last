@@ -8,26 +8,29 @@ import numpy as np
 from propagate import run_propagate_simulation
 from jiezhi import run_media_propagation_simulation
 
-# ---------------------- 1. 加载字体（只做一次） ----------------------
+# ---------- 全局强制中文（关键！） ----------
+plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'sans-serif']
+plt.rcParams['axes.unicode_minus'] = False
+
+# 加载本地字体（云端必须带这个）
 font_path = Path(__file__).parent / "fonts" / "simsunb.ttf"
 if font_path.exists():
     fm.fontManager.addfont(str(font_path))
+    plt.rcParams['font.sans-serif'] = ['SimSun']
     font_prop = fm.FontProperties(fname=str(font_path))
 else:
-    st.warning("⚠️ 字体文件未找到，将使用英文显示")
     font_prop = None
 
-# ---------------------- 2. 页面配置 ----------------------
+# ---------- 页面 ----------
 st.set_page_config(page_title="电磁波传播仿真", layout="wide")
 st.title("📡 电磁波传播仿真")
 
-# 初始化会话状态
 if 'mode' not in st.session_state:
     st.session_state.mode = "vacuum_to_media"
 if 'run_trigger' not in st.session_state:
     st.session_state.run_trigger = False
 
-# ---------------------- 3. 侧边栏参数 ----------------------
+# ---------- 侧边栏 ----------
 with st.sidebar:
     st.header("⚙️ 通用参数")
     amplitude = st.slider("振幅 E₀ (V/m)", 0.2, 3.0, 1.0, 0.1)
@@ -64,17 +67,22 @@ with st.sidebar:
     if st.button("▶️ 开始仿真", type="primary", use_container_width=True):
         st.session_state.run_trigger = True
 
-# ---------------------- 4. 运行仿真（关键：把 font_prop 传进去） ----------------------
+# ---------- 运行仿真 ----------
 if st.session_state.run_trigger:
     with st.spinner("正在仿真中..."):
         if st.session_state.mode == "vacuum_to_media":
-            fig, info = run_propagate_simulation(amplitude, interface_pos, params["lambda0"], params["er2"], font_prop)
+            fig, info = run_propagate_simulation(
+                amplitude, interface_pos,
+                params["lambda0"], params["er2"]
+            )
         else:
-            fig, info = run_media_propagation_simulation(amplitude, interface_pos, params["lambda1"], params["er1"], params["ur1"], params["er2"], params["ur2"], font_prop)
-        
+            fig, info = run_media_propagation_simulation(
+                amplitude, interface_pos,
+                params["lambda1"], params["er1"], params["ur1"],
+                params["er2"], params["ur2"]
+            )
         st.pyplot(fig)
         st.success("✅ 仿真完成!")
-
         with st.expander("📊 传播参数", expanded=True):
             for key, value in info.items():
                 st.write(f"**{key}**: {value}")
