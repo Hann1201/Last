@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# 增加 font_prop 参数
 def run_media_propagation_simulation(amplitude, interface_pos, lambda1, er1, ur1, er2, ur2, font_prop):
     c = 3e8
     f = c / lambda1
@@ -45,23 +44,25 @@ def run_media_propagation_simulation(amplitude, interface_pos, lambda1, er1, ur1
             H_right[i] = (amplitude * tau / eta2) * np.cos(phase_t)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-
     ax.plot(x_total, E_left, label='电场 E(z)', color='blue')
     ax.plot(x_total, H_left, label='磁场 H(z)', color='red')
     ax.plot(x_total[x_total > interface_pos], E_right[x_total > interface_pos], color='blue')
     ax.plot(x_total[x_total > interface_pos], H_right[x_total > interface_pos], color='red')
-
     ax.axvline(x=interface_pos, color='green', linestyle='--', label='介质分界面')
 
-    # 所有中文都加 fontproperties=font_prop
-    ax.set_xlabel('位置 z (m)', fontproperties=font_prop)
-    ax.set_ylabel('场强度', fontproperties=font_prop)
-    ax.set_title(f'介质间电磁波传播 (εᵣ₁={er1}, μᵣ₁={ur1} → εᵣ₂={er2}, μᵣ₂={ur2})', fontproperties=font_prop)
-    
-    # 图例字体
-    ax.legend(prop=font_prop)
-    ax.grid(True)
+    # 所有中文标签都强制使用 font_prop
+    if font_prop:
+        ax.set_xlabel('位置 z (m)', fontproperties=font_prop)
+        ax.set_ylabel('场强度', fontproperties=font_prop)
+        ax.set_title(f'介质间电磁波传播 (εᵣ₁={er1}, μᵣ₁={ur1} → εᵣ₂={er2}, μᵣ₂={ur2})', fontproperties=font_prop)
+        ax.legend(prop=font_prop)
+    else:
+        ax.set_xlabel('Position z (m)')
+        ax.set_ylabel('Field Strength')
+        ax.set_title(f'EM Wave Propagation (εᵣ₁={er1}, μᵣ₁={ur1} → εᵣ₂={er2}, μᵣ₂={ur2})')
+        ax.legend()
 
+    ax.grid(True)
     info = {
         '频率 f (Hz)': f,
         '介质1波长 λ₁ (m)': lambda1,
