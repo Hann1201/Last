@@ -1,17 +1,35 @@
 # wave_app.py
 import streamlit as st
+import matplotlib
+matplotlib.use('Agg')  # 云端稳定后端
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+from pathlib import Path
 import numpy as np
 from propagate import run_propagate_simulation
 from jiezhi import run_media_propagation_simulation
 
+# ---------------------- 强制解决中文乱码 ----------------------
+# 加载项目里的 simsunb.ttf 字体文件
+font_path = Path(__file__).parent / "fonts" / "simsunb.ttf"
+
+if font_path.exists():
+    # 注册字体
+    fm.fontManager.addfont(str(font_path))
+    font_prop = fm.FontProperties(fname=str(font_path))
+    # 全局设置
+    matplotlib.rcParams['font.sans-serif'] = [font_prop.get_name()]
+    matplotlib.rcParams['axes.unicode_minus'] = False
+else:
+    # 找不到字体时降级为英文，不崩溃
+    st.warning("⚠️ 字体文件未找到，将使用英文显示")
+    matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+    matplotlib.rcParams['axes.unicode_minus'] = False
+
 # 页面配置
 st.set_page_config(page_title="电磁波传播仿真", layout="wide")
 
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
-plt.rcParams['axes.unicode_minus'] = False
-
+# 标题
 st.title("📡 电磁波传播仿真")
 
 # ========== 初始化会话状态 ==========
@@ -28,172 +46,57 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ========== 模式选择按钮（带高亮效果）==========
-    st.subheader("📌 选择仿真模式")
-
-    col_btn1, col_btn2 = st.columns(2)
-
-    # 按钮1：真空→介质
-    with col_btn1:
-        if st.session_state.mode == "vacuum_to_media":
-            # 当前选中的按钮显示为红色（高亮）
-            btn1 = st.button("📡 真空→介质", use_container_width=True,
-                             type="primary", key="btn1_active")
-        else:
-            btn1 = st.button("📡 真空→介质", use_container_width=True,
-                             type="secondary", key="btn1_inactive")
-
-    # 按钮2：介质1→介质2
-    with col_btn2:
-        if st.session_state.mode == "media_to_media":
-            # 当前选中的按钮显示为红色（高亮）
-            btn2 = st.button("🔄 介质1→介质2", use_container_width=True,
-                             type="primary", key="btn2_active")
-        else:
-            btn2 = st.button("🔄 介质1→介质2", use_container_width=True,
-                             type="secondary", key="btn2_inactive")
-
-    # 处理按钮点击：切换模式
-    if btn1:
-        st.session_state.mode = "vacuum_to_media"
-        st.session_state.run_trigger = False
-        st.rerun()
-
-    if btn2:
-        st.session_state.mode = "media_to_media"
-        st.session_state.run_trigger = False
-        st.rerun()
+    # ========== 模式选择按钮（带高亮效果） ==========
+    st.subheader("选择仿真模式")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("真空→介质", key="vacuum_btn", 
+                     type="primary" if st.session_state.mode == "vacuum_to_media" else "secondary"):
+            st.session_state.mode = "vacuum_to_media"
+            st.session_state.run_trigger = False
+    with col2:
+        if st.button("介质1→介质2", key="media_btn", 
+                     type="primary" if st.session_state.mode == "media_to_media" else "secondary"):
+            st.session_state.mode = "media_to_media"
+            st.session_state.run_trigger = False
 
     st.markdown("---")
 
-    # ========== 根据当前模式显示不同的参数面板 ==========
-
+    # ========== 根据模式显示不同参数 ==========
     if st.session_state.mode == "vacuum_to_media":
-        st.subheader("📡 真空→介质参数")
-        wavelength = st.slider("真空波长 λ₀ (m)", 0.5, 5.0, 2.0, 0.1, key="vac_wavelength")
-        er = st.slider("相对介电常数 εᵣ", 1.0, 10.0, 4.0, 0.1, key="vac_er")
+        st.subheader("真空→介质参数")
+        lambda0 = st.slider("真空波长 λ₀ (m)", 0.5, 5.0, 2.0, 0.1)
+        er2 = st.slider("相对介电常数 εᵣ", 1.0, 10.0, 4.0, 0.1)
+        params = {"lambda0": lambda0, "er2": er2}
+    else:
+        st.subheader("介质1→介质2参数")
+        lambda1 = st.slider("介质1波长 λ₁ (m)", 0.5, 5.0, 2.0, 0.1)
+        er1 = st.slider("介质1相对介电常数 εᵣ₁", 1.0, 10.0, 2.0, 0.1)
+        er2 = st.slider("介质2相对介电常数 εᵣ₂", 1.0, 10.0, 4.0, 0.1)
+        params = {"lambda1": lambda1, "er1": er1, "er2": er2}
 
-        # 运行按钮
-        run_btn = st.button("🚀 开始传播仿真", use_container_width=True, type="primary")
+    st.markdown("---")
 
-        # 设置介质参数为None
-        frequency = None
-        wavelength_media = None
-        er1 = ur1 = er2 = ur2 = None
+    # 运行按钮
+    if st.button("▶️ 开始仿真", type="primary", use_container_width=True):
+        st.session_state.run_trigger = True
 
-    else:  # media_to_media
-        st.subheader("🔄 介质1→介质2参数")
-
-        # 输入方式选择
-        freq_or_lam = st.radio("输入方式", ["频率", "真空波长"], index=0, horizontal=True)
-
-        if freq_or_lam == "频率":
-            frequency = st.slider("频率 f (MHz)", 30.0, 300.0, 100.0, 10.0, key="media_freq")
-            wavelength_media = None
-        else:
-            frequency = None
-            wavelength_media = st.slider("真空波长 λ₀ (m)", 1.0, 10.0, 3.0, 0.5, key="media_wavelength")
-
-        st.markdown("---")
-
-        # 介质1和介质2参数（两列布局）
-        col_m1, col_m2 = st.columns(2)
-
-        with col_m1:
-            st.markdown("**介质1**")
-            er1 = st.slider("εᵣ₁", 1.0, 6.0, 1.0, 0.1, key="er1")
-            ur1 = st.slider("μᵣ₁", 1.0, 4.0, 1.0, 0.1, key="ur1")
-
-        with col_m2:
-            st.markdown("**介质2**")
-            er2 = st.slider("εᵣ₂", 1.0, 10.0, 4.0, 0.1, key="er2")
-            ur2 = st.slider("μᵣ₂", 1.0, 6.0, 2.0, 0.1, key="ur2")
-
-        # 运行按钮
-        run_btn = st.button("🚀 开始传播仿真", use_container_width=True, type="primary")
-
-        # 设置真空参数为None
-        wavelength = None
-        er = None
-
-# 主显示区域
-col_main, col_info = st.columns([3, 1])
-
-# ========== 运行仿真 ==========
-if run_btn:
-    st.session_state.run_trigger = True
-
+# ========== 主界面绘图区域 ==========
 if st.session_state.run_trigger:
-    if st.session_state.mode == "vacuum_to_media":
-        if wavelength is not None and er is not None:
-            with st.spinner("正在计算电磁波传播..."):
-                success = run_propagate_simulation(
-                    wavelength=wavelength,
-                    amplitude=amplitude,
-                    er=er,
-                    interface_pos=interface_pos,
-                    col_main=col_main,
-                    col_info=col_info
-                )
-                if success:
-                    st.toast("✅ 真空→介质传播仿真完成！", icon="🎉")
-        else:
-            with col_main:
-                st.error("❌ 请设置真空→介质参数")
-
-    else:  # media_to_media
-        if er1 is not None and ur1 is not None and er2 is not None and ur2 is not None:
-            with st.spinner("正在计算介质间传播..."):
-                # 转换频率单位
-                freq_hz = frequency * 1e6 if frequency is not None else None
-
-                success = run_media_propagation_simulation(
-                    frequency=freq_hz,
-                    wavelength=wavelength_media,
-                    amplitude=amplitude,
-                    er1=er1,
-                    ur1=ur1,
-                    er2=er2,
-                    ur2=ur2,
-                    interface_pos=interface_pos,
-                    col_main=col_main,
-                    col_info=col_info
-                )
-                if success:
-                    st.toast("✅ 介质1→介质2传播仿真完成！", icon="🎉")
-        else:
-            with col_main:
-                st.error("❌ 请设置介质1和介质2参数")
-
-else:
-    # 显示当前模式的说明
-    with col_main:
+    with st.spinner("正在仿真中..."):
         if st.session_state.mode == "vacuum_to_media":
-            st.info("👈 选择「真空→介质」模式，设置参数后点击「开始传播仿真」")
-            st.markdown("""
-            ### 📡 真空→介质传播
-
-            电磁波从真空进入介质时的变化：
-            - **波长变短**：λ = λ₀/√εᵣ
-            - **速度减慢**：v = c/√εᵣ
-            - **波阻抗减小**：η = η₀/√εᵣ
-
-            **左侧3D图**：展示电场在空间中的传播
-            **右侧波形图**：展示电场E和磁场H的变化
-            """)
+            # 真空→介质仿真
+            fig, info = run_propagate_simulation(amplitude, interface_pos, params["lambda0"], params["er2"], font_prop)
         else:
-            st.info("👈 选择「介质1→介质2」模式，设置参数后点击「开始传播仿真」")
-            st.markdown("""
-            ### 🔄 介质1→介质2传播
+            # 介质1→介质2仿真
+            fig, info = run_media_propagation_simulation(amplitude, interface_pos, params["lambda1"], params["er1"], params["er2"], font_prop)
+        
+        st.pyplot(fig)
+        st.success("✅ 仿真完成!")
 
-            电磁波从一种介质进入另一种介质时：
-            - **部分反射，部分透射**
-            - **反射系数**：Γ = (η₂-η₁)/(η₂+η₁)
-            - **透射系数**：τ = 2η₂/(η₂+η₁)
-
-            **左侧3D图**：展示电场在两种介质中的传播
-            **右侧波形图**：展示波长变化和界面连续性
-            """)
-
-    with col_info:
-        st.info("📌 设置参数后点击「开始传播仿真」")
+        # 右侧显示参数信息
+        with st.expander("📊 传播参数", expanded=True):
+            for key, value in info.items():
+                st.write(f"**{key}**: {value}")
+else:
+    st.info("请在左侧设置参数并点击「开始仿真」按钮")
